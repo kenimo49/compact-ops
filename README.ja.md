@@ -1,0 +1,104 @@
+# compact-ops
+
+[English README](./README.md)
+
+Claude Code の context compaction を挟んでもセッションが壊れないようにする透過型プラグイン。圧縮前に構造化 state file を保存し、圧縮直後・resume 直後に復旧ガイダンスを注入する。圧縮アルゴリズム自体には手を入れず、公式 hook だけで完結する。
+
+[u-ichi/compact-plus](https://github.com/u-ichi/compact-plus) (MIT) の設計をベースに、次の3点を変更した派生実装。
+
+| | compact-plus | compact-ops |
+|---|---|---|
+| コンテキスト使用率の警告 | 作者の別リポジトリの statusline スクリプトが書く marker に依存（plugin 単体では発火しない） | **plugin 単体で完結**。UserPromptSubmit hook が transcript の最新 usage から使用率を自己計算 |
+| state file の置き場所 | `$TMPDIR`（再起動で消える） | **`~/.claude/compact-ops/` に永続化**（30日保持）。プロジェクト cwd 別に整理 |
+| セッション跨ぎの復旧 | なし（compact 跨ぎのみ） | **`--resume` 時に SessionStart hook が state を注入**。同一プロジェクトの直近 state への fallback つき（72h 以内） |
+| 圧縮直後の復旧注入 | PostCompact marker → 次の UserPromptSubmit で注入（2 hook の間接構造） | SessionStart hook の `compact` matcher で直接注入 |
+| 手動 state 保存 skill の session id 検出 | 作者の `~/.claude/scripts/get-session-id.sh` に依存 | **plugin に同梱** (`scripts/get-session-id.sh`) |
+| LLM backend | Sonnet primary / Codex Spark fallback (ChatGPT Pro 前提) | Sonnet primary / **Haiku fallback**（Claude だけで完結） |
+
+## 何ができるか
+
+- 圧縮前に transcript を `~/.claude/compact-ops/backups/` にバックアップし、LLM で 10 見出しの state file を書き出す
+- 圧縮直後の新しいコンテキストに、state file・原文再読 note・呼び出し済み skill 一覧の復旧ガイダンスを注入する
+- `claude --resume` した時も同じ復旧ガイダンスを注入する（PC 再起動を挟んでも state は残っている）
+- コンテキスト使用率が閾値（default 60%）を超えたら `/compact` を推奨する通知と、Active Plan / Current Phase / 直近 Session Decision の 3 行 recitation を注入する
+- `/compact-ops` skill で agent 自身が構造化 state を書く手動経路もある
+
+## インストール
+
+```bash
+git clone https://github.com/kenimo49/compact-ops.git
+claude plugin marketplace add /path/to/compact-ops --scope user
+claude plugin install compact-ops@compact-ops-local
+```
+
+前提: Claude Code v2.x、`jq`、LLM backend として `claude` CLI。
+
+インストール後は普通に `/compact` を実行するだけで動く。追加の操作は不要。
+
+## 設定
+
+`~/.claude/settings.json` の `env` block で上書きする。
+
+| env var | default | 意味 |
+|---|---|---|
+| `COMPACT_OPS_PRIMARY_BACKEND` | `claude -p --model claude-sonnet-5 ...` | state 生成の primary コマンド。空文字列で skip |
+| `COMPACT_OPS_FALLBACK_BACKEND` | `claude -p --model claude-haiku-4-5-20251001 ...` | fallback コマンド。空文字列で skip |
+| `COMPACT_OPS_WARN_THRESHOLD` | `60` | 使用率警告の閾値 (%) |
+| `COMPACT_OPS_CONTEXT_WINDOW` | `200000` | 使用率計算に使う context window トークン数 |
+| `COMPACT_OPS_RESUME_MAX_AGE_HOURS` | `72` | resume 復旧で拾う state の鮮度上限 |
+| `COMPACT_OPS_TRANSCRIPT_MODE` | `incremental` | `incremental` / `head-tail` / `tail` |
+| `COMPACT_OPS_TRANSCRIPT_HEAD_TURNS` | `5` | head 側で切り出す turn 数 |
+| `COMPACT_OPS_TRANSCRIPT_TAIL_TURNS` | `25` | tail 側で切り出す turn 数 |
+| `COMPACT_OPS_TRANSCRIPT_HEAD_KB` | `10` | head 側 byte cap (KB) |
+| `COMPACT_OPS_TRANSCRIPT_TAIL_KB` | `40` | tail 側 byte cap (KB) |
+| `COMPACT_OPS_INCREMENTAL_REFRESH` | `10` | N 回に 1 回全再構築。`0` で無効 |
+| `COMPACT_OPS_MAX_OUTPUT_TOKENS` | `4096` | LLM 出力上限 |
+| `COMPACT_OPS_SQUASH_ENABLED` | `1` | tool 出力 squash on/off |
+| `COMPACT_OPS_SQUASH_READ_LINES` | `100` | Read 出力の squash 閾値（行） |
+| `COMPACT_OPS_SQUASH_BASH_CHARS` | `500` | Bash 出力の squash 閾値（文字） |
+| `COMPACT_OPS_TWO_PASS` | `1` | state 生成の 2-pass 自己批評 on/off |
+| `COMPACT_OPS_HOME` | `~/.claude/compact-ops` | 永続データの置き場所 |
+
+backend コマンド内では `$SYSTEM_PROMPT` / `$SESSION_ID` / `$TRANSCRIPT_PATH` / `$MAX_OUTPUT_TOKENS` を参照できる。
+
+`/compact 重要な設計判断は必ず残して` のように引数を付けると、state 生成 LLM への priority guidance になる。
+
+## 動作フロー
+
+1. **PreCompact**: transcript backup + LLM による 10 見出し state file 生成（`~/.claude/compact-ops/state/<cwd_hash>/<session_id>.md`）
+2. **PostCompact**: 警告 cooldown をリセット
+3. **SessionStart (compact)**: 圧縮直後の新コンテキストに復旧ガイダンスを注入
+4. **SessionStart (resume)**: セッション再開時に自セッションの state、なければ同一プロジェクトの直近 state (72h) を注入
+5. **UserPromptSubmit**: transcript の最新 assistant usage から使用率を計算し、閾値超過で `/compact` 推奨 + 3 行 recitation を一度だけ注入
+
+全 hook が fail-open。hook が失敗しても compaction・prompt 処理は止まらない。
+
+## state file 見出し構成
+
+`# Compact Prep State` から始まる 10 見出し。LLM 生成と `/compact-ops` 手動保存の両方で同じ順序を使う。
+
+1. `## Active Plan`
+2. `## Current Phase`
+3. `## TaskList Summary`
+4. `## Session Decisions`
+5. `## Constraints and Blockers`
+6. `## Worker Topology`
+7. `## Skills Invoked`
+8. `## Editing Files`
+9. `## Failed Attempts`
+10. `## Recovery Notes`
+
+state file は原文の project files / rules / skills / plans より authoritative ではない。復旧ガイダンスは常に原文の再読を促す。
+
+## Development Checks
+
+```bash
+python3 -m json.tool .claude-plugin/plugin.json >/dev/null
+python3 -m json.tool .claude-plugin/marketplace.json >/dev/null
+python3 -m json.tool hooks/hooks.json >/dev/null
+bash -n hooks/*.sh scripts/*.sh
+```
+
+## License
+
+MIT。[u-ichi/compact-plus](https://github.com/u-ichi/compact-plus) (MIT) 由来のコードを含む。
