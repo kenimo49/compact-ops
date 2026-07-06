@@ -5,17 +5,17 @@
   },
   "metadata": {
     "description": "Local marketplace for the compact-ops plugin.",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {
       "name": "compact-ops",
       "description": "Self-contained session state preservation for Claude Code context compaction.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "ken imoto"
       },
-      "source": "./plugins/compact-ops"
+      "source": "./"
     }
   ]
 }

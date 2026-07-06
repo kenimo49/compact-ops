@@ -20,6 +20,7 @@ set -uo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
+COMPACT_OPS_HOOK="userpromptsubmit-warn"
 
 COMPACT_OPS_WARN_THRESHOLD="${COMPACT_OPS_WARN_THRESHOLD:-60}"
 COMPACT_OPS_CONTEXT_WINDOW="${COMPACT_OPS_CONTEXT_WINDOW:-200000}"
@@ -30,6 +31,7 @@ TRANSCRIPT_PATH=$(read_hook_field "$INPUT" '.transcript_path')
 CWD=$(read_hook_field "$INPUT" '.cwd')
 
 [[ -n "$SESSION_ID" ]] || exit 0
+valid_session_id "$SESSION_ID" || exit 0
 [[ -f "$TRANSCRIPT_PATH" ]] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 

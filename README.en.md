@@ -20,7 +20,7 @@ claude plugin marketplace add /path/to/compact-ops --scope user
 claude plugin install compact-ops@compact-ops-local
 ```
 
-Requires Claude Code v2.x, `jq`, and the `claude` CLI as the LLM backend.
+Requires Claude Code v2.x, `jq`, and the `claude` CLI as the LLM backend. Linux and macOS are supported (hashing falls back `md5sum` → `md5` → `shasum`; no GNU-only options).
 
 After installing, just run `/compact` (or let auto-compact fire) — no extra steps.
 
@@ -42,13 +42,15 @@ What does not change: the compaction algorithm and the standard summary itself a
 
 ## How it works
 
-1. **PreCompact**: back up the transcript and write a 10-heading state file via an LLM (`~/.claude/compact-ops/state/<cwd_hash>/<session_id>.md`)
+1. **PreCompact**: back up the transcript (gzip) and write a 10-heading state file via an LLM (`~/.claude/compact-ops/state/<cwd_hash>/<session_id>.md`); the LLM output is only written after all 10 headings validate, otherwise the previous state is kept
 2. **PostCompact**: reset the warning cooldown
 3. **SessionStart (compact)**: inject recovery guidance into the fresh post-compaction context
 4. **SessionStart (resume)**: inject this session's state, or the project's newest recent state
 5. **UserPromptSubmit**: compute context usage from the transcript; above the threshold (default 60%), inject a one-shot `/compact` reminder plus a 3-line state recitation
 
-All hooks fail open. Configuration is via `COMPACT_OPS_*` env vars in `~/.claude/settings.json` — see the [Japanese README](./README.md) for the full table.
+All hooks fail open; set `COMPACT_OPS_DEBUG=1` to log swallowed failures under `~/.claude/compact-ops/logs/`. Configuration is via `COMPACT_OPS_*` env vars in `~/.claude/settings.json` — see the [Japanese README](./README.md) for the full table.
+
+Security and retention: state files and backups carry raw conversation content (secrets echoed by tools included), so everything is created with `umask 077` (dirs 700 / files 600). State is pruned after 30 days; backups keep at most 20 per session and 30 days. Known limitation: the usage warning can only be computed on UserPromptSubmit, so an auto-compact that fires before your next prompt gets no advance warning (state capture still runs).
 
 ## License
 

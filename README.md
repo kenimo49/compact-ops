@@ -37,7 +37,7 @@ Claude Code はコンテキストが埋まると、会話全体を built-in prom
 
 ## 何ができるか
 
-- 圧縮前に transcript を `~/.claude/compact-ops/backups/` にバックアップし、LLM で 10 見出しの state file を書き出す
+- 圧縮前に transcript を `~/.claude/compact-ops/backups/` にバックアップ (gzip 圧縮) し、LLM で 10 見出しの state file を書き出す
 - 圧縮直後の新しいコンテキストに、state file・原文再読 note・呼び出し済み skill 一覧の復旧ガイダンスを注入する
 - `claude --resume` した時も同じ復旧ガイダンスを注入する（PC 再起動を挟んでも state は残っている）
 - コンテキスト使用率が閾値（default 60%）を超えたら `/compact` を推奨する通知と、Active Plan / Current Phase / 直近 Session Decision の 3 行 recitation を注入する
@@ -51,7 +51,7 @@ claude plugin marketplace add /path/to/compact-ops --scope user
 claude plugin install compact-ops@compact-ops-local
 ```
 
-前提: Claude Code v2.x、`jq`、LLM backend として `claude` CLI。
+前提: Claude Code v2.x、`jq`、LLM backend として `claude` CLI。Linux / macOS 対応 (ハッシュは `md5sum` → `md5` → `shasum` の順で fallback、GNU 専用オプションは不使用)。
 
 インストール後は普通に `/compact` を実行するだけで動く。追加の操作は不要。
 
@@ -76,8 +76,9 @@ claude plugin install compact-ops@compact-ops-local
 | `COMPACT_OPS_SQUASH_ENABLED` | `1` | tool 出力 squash on/off |
 | `COMPACT_OPS_SQUASH_READ_LINES` | `100` | Read 出力の squash 閾値（行） |
 | `COMPACT_OPS_SQUASH_BASH_CHARS` | `500` | Bash 出力の squash 閾値（文字） |
-| `COMPACT_OPS_TWO_PASS` | `1` | state 生成の 2-pass 自己批評 on/off |
+| `COMPACT_OPS_TWO_PASS` | `1` | state 生成の 2-pass 自己批評 on/off (`0` で draft 一発出力に切替) |
 | `COMPACT_OPS_HOME` | `~/.claude/compact-ops` | 永続データの置き場所 |
+| `COMPACT_OPS_DEBUG` | `0` | `1` で fail-open が握りつぶした失敗理由を `$COMPACT_OPS_HOME/logs/compact-ops.log` に記録 (backend の stderr も `backend-stderr.log` に残す) |
 
 backend コマンド内では `$SYSTEM_PROMPT` / `$SESSION_ID` / `$TRANSCRIPT_PATH` / `$MAX_OUTPUT_TOKENS` を参照できる。
 
@@ -91,7 +92,16 @@ backend コマンド内では `$SYSTEM_PROMPT` / `$SESSION_ID` / `$TRANSCRIPT_PA
 4. **SessionStart (resume)**: セッション再開時に自セッションの state、なければ同一プロジェクトの直近 state (72h) を注入
 5. **UserPromptSubmit**: transcript の最新 assistant usage から使用率を計算し、閾値超過で `/compact` 推奨 + 3 行 recitation を一度だけ注入
 
-全 hook が fail-open。hook が失敗しても compaction・prompt 処理は止まらない。
+全 hook が fail-open。hook が失敗しても compaction・prompt 処理は止まらない。原因調査が必要な時は `COMPACT_OPS_DEBUG=1`。
+
+既知の制限: 使用率警告は UserPromptSubmit 時にしか計算できないため、次のユーザー発話より先に auto-compact が走るケース (1 turn で大量のコンテキストを消費した場合) は事前警告できない。その場合も PreCompact の state 保存自体は通常どおり動く。
+
+## セキュリティと保持ポリシー
+
+- state file と transcript backup には**会話内容がそのまま残る** (ツール出力経由で secrets が写り込む可能性もある)。すべて `umask 077` で作成され、ディレクトリ 700 / ファイル 600 でユーザー専用
+- state: 30 日で自動削除。backup: session ごと最大 20 件 + 30 日で自動削除 (gzip 圧縮、JSONL は約 1/10 に縮む)
+- `session_id` は allowlist 検証してからファイル名に使う (hook 入力を無検証でパスに流さない)
+- LLM が生成した state は 10 見出し全部の存在を検証してから書き込む。不正な出力なら旧 state を保持したまま fail-open
 
 ## state file 見出し構成
 

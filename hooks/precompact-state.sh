@@ -12,8 +12,10 @@ trap 'exit 0' ERR
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
+COMPACT_OPS_HOOK="precompact-state"
 PLUGIN_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 PROMPT_FILE="$PLUGIN_ROOT/prompts/state-summary.md"
+SQUASH_JQ="$SCRIPT_DIR/squash.jq"
 
 COMPACT_OPS_TRANSCRIPT_MODE="${COMPACT_OPS_TRANSCRIPT_MODE:-incremental}"
 COMPACT_OPS_TRANSCRIPT_HEAD_TURNS="${COMPACT_OPS_TRANSCRIPT_HEAD_TURNS:-5}"
@@ -42,10 +44,11 @@ CUSTOM_INSTRUCTIONS=$(read_hook_field "$INPUT" '.custom_instructions')
 CWD=$(read_hook_field "$INPUT" '.cwd')
 
 [[ -n "$SESSION_ID" ]] || exit 0
+valid_session_id "$SESSION_ID" || { debug_log "rejected session_id: $SESSION_ID"; exit 0; }
 [[ -n "$TRANSCRIPT_PATH" ]] || exit 0
-[[ -f "$TRANSCRIPT_PATH" ]] || exit 0
-[[ -f "$PROMPT_FILE" ]] || exit 0
-command -v jq >/dev/null 2>&1 || exit 0
+[[ -f "$TRANSCRIPT_PATH" ]] || { debug_log "transcript not found: $TRANSCRIPT_PATH"; exit 0; }
+[[ -f "$PROMPT_FILE" ]] || { debug_log "prompt file not found: $PROMPT_FILE"; exit 0; }
+command -v jq >/dev/null 2>&1 || { debug_log "jq not found"; exit 0; }
 
 STATE_DIR=$(state_dir_for_cwd "$CWD")
 STATE_FILE="$STATE_DIR/$SESSION_ID.md"
@@ -67,99 +70,18 @@ cap_bytes() {
   fi
 }
 
-jq_string() {
-  local filter="$1"
-  local json="$2"
-  printf '%s' "$json" | jq -r "$filter" 2>/dev/null || true
-}
-
-extract_text() {
-  local json="$1"
-  jq_string '
-    def text_value:
-      if type == "string" then .
-      elif type == "array" then ([.[]? | if type == "string" then . elif type == "object" then (.text? // .content? // "") else "" end] | join("\n"))
-      elif type == "object" then (.text? // .content? // "")
-      else "" end;
-    [
-      (.content? | text_value),
-      (.message.content? | text_value),
-      (.result? | text_value),
-      (.output? | text_value),
-      (.tool_result? | text_value)
-    ] | map(select(. != null and . != "")) | first // ""
-  ' "$json"
-}
-
-extract_tool_name() {
-  local json="$1"
-  jq_string '
-    [
-      .tool_name?, .name?,
-      (.message.content[]? | objects | select(.type? == "tool_use") | .name?),
-      (.message.content[]? | objects | select(.type? == "tool_result") | .name?)
-    ] | map(select(. != null and . != "")) | first // ""
-  ' "$json"
-}
-
-extract_refs() {
-  local json="$1"
-  local refs
-  refs=$(printf '%s' "$json" | jq -r '.. | strings | select(test("(/[^[:space:]\"'\'']+|https?://[^[:space:]\"'\'']+)"))' 2>/dev/null | head -n 5 | tr '\n' ' ' || true)
-  refs=${refs% }
-  printf '%s' "${refs:-unknown path}"
-}
-
-process_json_line() {
-  local line="$1"
-  local json tool text refs line_count char_count exit_code match_count
-
-  json=$(printf '%s' "$line" | jq -c '.' 2>/dev/null) || {
-    printf '%s\n' "$line"
-    return
-  }
-
-  [[ "$COMPACT_OPS_SQUASH_ENABLED" == "1" ]] || {
-    printf '%s\n' "$json"
-    return
-  }
-
-  tool=$(extract_tool_name "$json")
-  text=$(extract_text "$json")
-  refs=$(extract_refs "$json")
-  line_count=$(printf '%s' "$text" | awk 'END { print NR }')
-  char_count=${#text}
-
-  case "$tool" in
-    Read)
-      if [[ "$line_count" -gt "$COMPACT_OPS_SQUASH_READ_LINES" ]]; then
-        printf '[Read: %s lines from %s]\n' "$line_count" "$refs"
-        return
-      fi
-      ;;
-    Bash)
-      if [[ "$char_count" -gt "$COMPACT_OPS_SQUASH_BASH_CHARS" ]]; then
-        exit_code=$(jq_string '.exit_code // .status // .metadata.exit_code // "unknown"' "$json")
-        printf '[Bash: exit %s, %s chars output; refs: %s]\n' "$exit_code" "$char_count" "$refs"
-        return
-      fi
-      ;;
-    Grep|Glob)
-      if [[ "$line_count" -gt "$COMPACT_OPS_SQUASH_READ_LINES" ]]; then
-        match_count=$(printf '%s' "$text" | awk 'END { print NR }')
-        printf '[%s: %s matches; refs: %s]\n' "$tool" "$match_count" "$refs"
-        return
-      fi
-      ;;
-  esac
-
-  printf '%s\n' "$json"
-}
-
 process_transcript_stream() {
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    process_json_line "$line"
-  done
+  # Single jq pass over the whole stream (see squash.jq). The previous
+  # per-line bash loop spawned several jq processes per transcript line and
+  # could burn the 180s hook timeout on large incremental diffs.
+  if [[ "$COMPACT_OPS_SQUASH_ENABLED" != "1" || ! -f "$SQUASH_JQ" ]]; then
+    cat
+    return
+  fi
+  jq -rR \
+    --argjson read_lines "$COMPACT_OPS_SQUASH_READ_LINES" \
+    --argjson bash_chars "$COMPACT_OPS_SQUASH_BASH_CHARS" \
+    -f "$SQUASH_JQ" 2>/dev/null || cat
 }
 
 semantic_head_tail() {
@@ -257,6 +179,9 @@ build_user_prompt() {
   printf 'state_file: %s\n' "$STATE_FILE"
   printf 'mode: %s\n' "$mode"
   printf 'two_pass_enabled: %s\n' "$COMPACT_OPS_TWO_PASS"
+  if [[ "$COMPACT_OPS_TWO_PASS" != "1" ]]; then
+    printf 'Two-pass override: the internal two-pass process is DISABLED for this run. Draft once and output the final state directly, skipping the self-critique step.\n'
+  fi
   printf '\nExisting state (from previous /compact):\n'
   if state_is_valid && [[ "$mode" == "incremental" ]]; then
     cat "$STATE_FILE"
@@ -270,18 +195,39 @@ build_user_prompt() {
   printf 'Priority: honor user custom_instructions if provided.\n'
 }
 
+validate_state_output() {
+  # Guard against overwriting a good state file with a malformed one:
+  # require the exact title line and all 10 headings.
+  local out="$1" h
+  [[ "$(printf '%s\n' "$out" | head -n 1)" == "# Compact Prep State" ]] || return 1
+  for h in "## Active Plan" "## Current Phase" "## TaskList Summary" \
+           "## Session Decisions" "## Constraints and Blockers" "## Worker Topology" \
+           "## Skills Invoked" "## Editing Files" "## Failed Attempts" "## Recovery Notes"; do
+    printf '%s\n' "$out" | grep -qxF "$h" || { debug_log "state output missing heading: $h"; return 1; }
+  done
+}
+
 run_backend_if_set() {
   local cmd="$1"
   local user_prompt="$2"
-  local output
+  local output stderr_target
 
   [[ -n "$cmd" ]] || return 1
 
-  if output=$(SYSTEM_PROMPT="$SYSTEM_PROMPT" SESSION_ID="$SESSION_ID" TRANSCRIPT_PATH="$TRANSCRIPT_PATH" MAX_OUTPUT_TOKENS="$COMPACT_OPS_MAX_OUTPUT_TOKENS" bash -c "$cmd" <<< "$user_prompt" 2>/dev/null); then
-    if [[ "$(printf '%s\n' "$output" | head -n 1)" == "# Compact Prep State" ]]; then
+  stderr_target=/dev/null
+  if [[ "$COMPACT_OPS_DEBUG" == "1" ]]; then
+    mkdir -p "$LOG_ROOT" 2>/dev/null || true
+    stderr_target="$LOG_ROOT/backend-stderr.log"
+  fi
+
+  if output=$(SYSTEM_PROMPT="$SYSTEM_PROMPT" SESSION_ID="$SESSION_ID" TRANSCRIPT_PATH="$TRANSCRIPT_PATH" MAX_OUTPUT_TOKENS="$COMPACT_OPS_MAX_OUTPUT_TOKENS" bash -c "$cmd" <<< "$user_prompt" 2>>"$stderr_target"); then
+    if validate_state_output "$output"; then
       printf '%s\n' "$output"
       return 0
     fi
+    debug_log "backend output failed validation (cmd: ${cmd:0:60}...)"
+  else
+    debug_log "backend command failed (cmd: ${cmd:0:60}...)"
   fi
   return 1
 }
@@ -338,7 +284,7 @@ SKILLS_INVOKED_LIST=$(collect_skills_invoked)
 USER_PROMPT=$(build_user_prompt "$MODE" "$EVENTS")
 
 OUTPUT=$(run_backends "$USER_PROMPT" || true)
-[[ -n "$OUTPUT" ]] || exit 0
+[[ -n "$OUTPUT" ]] || { debug_log "all backends failed; keeping previous state file"; exit 0; }
 
 TMP_FILE=$(mktemp "$STATE_DIR/.state.XXXXXX")
 printf '%s\n' "$OUTPUT" > "$TMP_FILE"

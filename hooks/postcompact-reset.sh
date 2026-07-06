@@ -13,6 +13,7 @@ source "$SCRIPT_DIR/lib.sh"
 INPUT=$(cat)
 SESSION_ID=$(read_hook_field "$INPUT" '.session_id')
 [[ -n "$SESSION_ID" ]] || exit 0
+valid_session_id "$SESSION_ID" || exit 0
 
 rm -f "$MARKER_ROOT/warned/$SESSION_ID" 2>/dev/null || true
 

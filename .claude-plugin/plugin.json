@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "compact-ops",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Self-contained session state preservation for Claude Code context compaction: state capture, recovery injection, resume recovery, and built-in context usage warnings.",
   "author": {
     "name": "ken imoto"

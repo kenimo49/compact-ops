@@ -17,6 +17,7 @@ set -uo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
+COMPACT_OPS_HOOK="sessionstart-recovery"
 
 COMPACT_OPS_RESUME_MAX_AGE_HOURS="${COMPACT_OPS_RESUME_MAX_AGE_HOURS:-72}"
 
@@ -26,6 +27,7 @@ SOURCE=$(read_hook_field "$INPUT" '.source')
 CWD=$(read_hook_field "$INPUT" '.cwd')
 
 [[ -n "$SESSION_ID" ]] || exit 0
+valid_session_id "$SESSION_ID" || { debug_log "rejected session_id: $SESSION_ID"; exit 0; }
 case "$SOURCE" in
   compact|resume) ;;
   *) exit 0 ;;
@@ -36,10 +38,17 @@ STATE_FILE="$STATE_DIR/$SESSION_ID.md"
 STATE_NOTE=""
 
 if [[ ! -f "$STATE_FILE" && "$SOURCE" == "resume" ]]; then
-  # Fall back to the newest fresh state file from the same project.
-  CANDIDATE=$(find "$STATE_DIR" -maxdepth 1 -type f -name '*.md' \
-      -mmin -"$((COMPACT_OPS_RESUME_MAX_AGE_HOURS * 60))" -print 2>/dev/null \
-    | xargs -r ls -1t 2>/dev/null | head -n 1)
+  # Fall back to the newest fresh VALID state file from the same project.
+  # `-exec ls -1t {} +` sorts by mtime without GNU-only `xargs -r` (BSD/macOS
+  # safe); the header grep skips corrupted or unrelated markdown files.
+  CANDIDATE=""
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    grep -q '^# Compact Prep State' "$f" 2>/dev/null || continue
+    CANDIDATE="$f"
+    break
+  done < <(find "$STATE_DIR" -maxdepth 1 -type f -name '*.md' \
+      -mmin -"$((COMPACT_OPS_RESUME_MAX_AGE_HOURS * 60))" -exec ls -1t {} + 2>/dev/null)
   if [[ -n "$CANDIDATE" ]]; then
     STATE_FILE="$CANDIDATE"
     STATE_NOTE=" (written by a previous session in this project; verify it matches the work being resumed)"
@@ -64,9 +73,9 @@ else
     # Nothing useful to inject on a plain resume with no saved state.
     exit 0
   fi
-  BACKUP_FILE=$(find "$BACKUP_ROOT" -maxdepth 1 -type f -name "*-$SESSION_ID.jsonl" -print 2>/dev/null | sort -r | head -n 1)
+  BACKUP_FILE=$(find "$BACKUP_ROOT" -maxdepth 1 -type f \( -name "*-$SESSION_ID.jsonl" -o -name "*-$SESSION_ID.jsonl.gz" \) -print 2>/dev/null | sort -r | head -n 1)
   if [[ -n "$BACKUP_FILE" ]]; then
-    CTX+=$'\n'"- No state file was found. Transcript backup \`${BACKUP_FILE}\` exists; read it if recovery details are needed."
+    CTX+=$'\n'"- No state file was found. Transcript backup \`${BACKUP_FILE}\` exists; read it (gzip: decompress first) if recovery details are needed."
   fi
 fi
 
