@@ -2,6 +2,8 @@
 
 [日本語 README](./README.md)
 
+![compact-ops hero](./docs/assets/hero.png)
+
 A transparent Claude Code plugin that keeps sessions coherent across context compaction: structured state capture before `/compact`, recovery injection right after compaction and on `--resume`, plus a self-contained context-usage warning. It never touches the compaction algorithm itself — official hooks only.
 
 Derived from [u-ichi/compact-plus](https://github.com/u-ichi/compact-plus) (MIT) with three changes:

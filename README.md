@@ -2,6 +2,8 @@
 
 [English README](./README.en.md)
 
+![compact-ops hero](./docs/assets/hero.png)
+
 Claude Code の context compaction を挟んでもセッションが壊れないようにする透過型プラグイン。圧縮前に構造化 state file を保存し、圧縮直後・resume 直後に復旧ガイダンスを注入する。圧縮アルゴリズム自体には手を入れず、公式 hook だけで完結する。
 
 [u-ichi/compact-plus](https://github.com/u-ichi/compact-plus) (MIT) の設計をベースに、次の3点を変更した派生実装。
