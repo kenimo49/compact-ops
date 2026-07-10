@@ -57,3 +57,7 @@ Security and retention: state files and backups carry raw conversation content (
 ## License
 
 MIT. Contains code derived from [u-ichi/compact-plus](https://github.com/u-ichi/compact-plus) (MIT).
+
+---
+
+If this project saved you time, you can [sponsor its continued maintenance](https://github.com/sponsors/kenimo49).
