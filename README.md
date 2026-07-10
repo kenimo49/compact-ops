@@ -134,3 +134,7 @@ bash -n hooks/*.sh scripts/*.sh
 ## License
 
 MIT。[u-ichi/compact-plus](https://github.com/u-ichi/compact-plus) (MIT) 由来のコードを含む。
+
+---
+
+このツールが役に立ったら、[GitHub Sponsors](https://github.com/sponsors/kenimo49) で継続的なメンテナンスを支援できます。
