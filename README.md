@@ -2,6 +2,9 @@
 
 [English README](./README.en.md)
 
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/kenimo49?logo=githubsponsors&label=Sponsor)](https://github.com/sponsors/kenimo49)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-tip-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/kenimo49)
+
 ![compact-ops hero](./docs/assets/hero.png)
 
 Claude Code の context compaction を挟んでもセッションが壊れないようにする透過型プラグイン。圧縮前に構造化 state file を保存し、圧縮直後・resume 直後に復旧ガイダンスを注入する。圧縮アルゴリズム自体には手を入れず、公式 hook だけで完結する。

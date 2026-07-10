@@ -2,6 +2,9 @@
 
 [日本語 README](./README.md)
 
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/kenimo49?logo=githubsponsors&label=Sponsor)](https://github.com/sponsors/kenimo49)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-tip-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/kenimo49)
+
 ![compact-ops hero](./docs/assets/hero.png)
 
 A transparent Claude Code plugin that keeps sessions coherent across context compaction: structured state capture before `/compact`, recovery injection right after compaction and on `--resume`, plus a self-contained context-usage warning. It never touches the compaction algorithm itself — official hooks only.
