@@ -6,8 +6,6 @@
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/kenimo49?logo=githubsponsors&label=Sponsor)](https://github.com/sponsors/kenimo49)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-tip-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/kenimo49)
 
-> Part of the **[kenimoto Claude Code Kit](https://github.com/kenimo49#kenimoto-claude-code-kit)** — long-session survival tools for Claude Code. Siblings: [claude-shift](https://github.com/kenimo49/claude-shift) (multi-account switch + usage observer) / [hook-chain-lens](https://github.com/kenimo49/hook-chain-lens) (see how your hooks across user / project / plugin scopes actually merge and fire).
-
 ![compact-ops hero](./docs/assets/hero.png)
 
 A transparent Claude Code plugin that keeps sessions coherent across context compaction: structured state capture before `/compact`, recovery injection right after compaction and on `--resume`, plus a self-contained context-usage warning. It never touches the compaction algorithm itself — official hooks only.
@@ -59,6 +57,10 @@ What does not change: the compaction algorithm and the standard summary itself a
 All hooks fail open; set `COMPACT_OPS_DEBUG=1` to log swallowed failures under `~/.claude/compact-ops/logs/`. Configuration is via `COMPACT_OPS_*` env vars in `~/.claude/settings.json` — see the [Japanese README](./README.md) for the full table.
 
 Security and retention: state files and backups carry raw conversation content (secrets echoed by tools included), so everything is created with `umask 077` (dirs 700 / files 600). State is pruned after 30 days; backups keep at most 20 per session and 30 days. Known limitation: the usage warning can only be computed on UserPromptSubmit, so an auto-compact that fires before your next prompt gets no advance warning (state capture still runs).
+
+## Related
+
+Part of a small set of tools for keeping long Claude Code sessions coherent. Siblings: [claude-shift](https://github.com/kenimo49/claude-shift) (multi-account switch + usage observer) and [hook-chain-lens](https://github.com/kenimo49/hook-chain-lens) (diagnostic lens for merged hook chains across user / project / plugin scopes), all grouped under [kenimoto Claude Code Kit](https://github.com/kenimo49#kenimoto-claude-code-kit).
 
 ## License
 

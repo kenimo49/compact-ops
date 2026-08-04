@@ -6,8 +6,6 @@
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/kenimo49?logo=githubsponsors&label=Sponsor)](https://github.com/sponsors/kenimo49)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-tip-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/kenimo49)
 
-> Part of the **[kenimoto Claude Code Kit](https://github.com/kenimo49#kenimoto-claude-code-kit)** — long-session survival tools for Claude Code. Siblings: [claude-shift](https://github.com/kenimo49/claude-shift) (multi-account switch + usage observer) / [hook-chain-lens](https://github.com/kenimo49/hook-chain-lens) (see how your hooks across user / project / plugin scopes actually merge and fire).
-
 ![compact-ops hero](./docs/assets/hero.png)
 
 Claude Code の context compaction を挟んでもセッションが壊れないようにする透過型プラグイン。圧縮前に構造化 state file を保存し、圧縮直後・resume 直後に復旧ガイダンスを注入する。圧縮アルゴリズム自体には手を入れず、公式 hook だけで完結する。
@@ -136,6 +134,10 @@ python3 -m json.tool .claude-plugin/marketplace.json >/dev/null
 python3 -m json.tool hooks/hooks.json >/dev/null
 bash -n hooks/*.sh scripts/*.sh
 ```
+
+## 関連
+
+Claude Code の長時間セッション運用向けに作った小さいツール群のひとつ。姉妹に [claude-shift](https://github.com/kenimo49/claude-shift) (複数アカウント切替+使用量計測) と [hook-chain-lens](https://github.com/kenimo49/hook-chain-lens) (user/project/plugin scope の hook マージ後を可視化する CLI)、まとめ先は [kenimoto Claude Code Kit](https://github.com/kenimo49#kenimoto-claude-code-kit)。
 
 ## License
 
