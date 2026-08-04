@@ -2,8 +2,11 @@
 
 [日本語 README](./README.md)
 
+[![Part of kenimoto Claude Code Kit](https://img.shields.io/badge/Part_of-kenimoto_Claude_Code_Kit-1E3A5F?style=flat-square)](https://github.com/kenimo49#kenimoto-claude-code-kit)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/kenimo49?logo=githubsponsors&label=Sponsor)](https://github.com/sponsors/kenimo49)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-tip-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/kenimo49)
+
+> Part of the **[kenimoto Claude Code Kit](https://github.com/kenimo49#kenimoto-claude-code-kit)** — long-session survival tools for Claude Code. Sibling: [claude-shift](https://github.com/kenimo49/claude-shift) (multi-account switch + usage observer).
 
 ![compact-ops hero](./docs/assets/hero.png)
 
